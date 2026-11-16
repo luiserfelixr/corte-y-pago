@@ -140,6 +140,17 @@ nav button[aria-current="page"]{color:var(--tinta);border-top-color:var(--acento
 .tl{font-size:12px;color:var(--suave);text-align:center;text-transform:capitalize}
 .archivo{display:inline-flex;align-items:center;justify-content:center;cursor:pointer}
 .archivo input{position:absolute;opacity:0;width:1px;height:1px}
+input[type=date]{-webkit-appearance:none;appearance:none;display:block;min-width:0;max-width:100%;text-align:left}
+main{overflow-x:hidden}
+.tope{display:flex;justify-content:space-between;gap:10px;flex-wrap:wrap;font-size:13px;color:var(--suave);margin-bottom:6px}
+.tope strong{color:var(--tinta)}
+.tope.pasado strong{color:var(--critico)}
+.regla.chica{height:8px;margin-top:0}
+.regla.chica i{min-width:0}
+.prox li{display:flex;justify-content:space-between;align-items:center;gap:12px;padding:10px 0;border-top:1px solid var(--linea)}
+.prox li:first-child{border-top:0}
+.cu{font-size:13px;color:var(--suave);display:block}
+a.btn2{display:flex;align-items:center;justify-content:center;text-decoration:none;color:inherit;text-align:center}
 .fila-t{display:grid;grid-template-columns:1fr 1fr;gap:10px;padding-top:12px;border-top:1px solid var(--linea)}
 .fila-t:first-child{border-top:0;padding-top:0}
 .fila-t .campo:first-child{grid-column:1/-1}
@@ -248,6 +259,8 @@ function closeDate(idx,C){const y=Math.floor(idx/12),m=idx%12;return new Date(y,
 function closeIdx(s,C){const d=pd(s),y=d.getFullYear(),m=d.getMonth();return y*12+m+(d.getDate()<=Math.min(C,dim(y,m))?0:1);}
 function startDate(idx,C){const p=closeDate(idx-1,C);return new Date(p.getFullYear(),p.getMonth(),p.getDate()+1);}
 function payDate(idx,C,P){const c=closeDate(idx,C);let y=c.getFullYear(),m=c.getMonth();let p=new Date(y,m,Math.min(P,dim(y,m)));if(p<=c){m+=1;p=new Date(y,m,Math.min(P,dim(y,m)));}return p;}
+/* Día en que el usuario planea pagar (opcional): siempre después del corte y nunca después del límite */
+function planDate(idx,C,P,plan){const p=payDate(idx,C,P);if(!plan)return p;const c=closeDate(idx,C),y=p.getFullYear(),m=p.getMonth();let d=new Date(y,m,Math.min(plan,dim(y,m)));if(d>p)d=new Date(y,m-1,Math.min(plan,dim(y,m-1)));return d<=c?p:d;}
 function cargos(compras,card,idx){
   const C=card.corte,out=[],ini=startDate(idx,C),fin=closeDate(idx,C);
   for(const c of compras){
@@ -269,7 +282,7 @@ function cargos(compras,card,idx){
   return out.sort((a,b)=>a.fecha<b.fecha?1:a.fecha>b.fecha?-1:0);
 }
 function total(lista){return r2(lista.reduce((s,x)=>s+x.monto,0));}
-if(typeof module!=='undefined') module.exports={sugerir,closeDate,closeIdx,startDate,payDate,cargos,total,ymd,pd};
+if(typeof module!=='undefined') module.exports={sugerir,closeDate,closeIdx,startDate,payDate,planDate,cargos,total,ymd,pd};
 </script>
 
 <script>
@@ -291,7 +304,8 @@ function leerLocal(){
   try{const j=JSON.parse(localStorage.getItem(CLAVE)||'null');
     if(j){S.cards=j.cards||[];S.pagados=j.pagados||{};S.compras=j.compras||[];}
   }catch(e){}
-  if(!S.cards.length) S.cards=[{id:'bbvaoro',nombre:'BBVA Oro',corte:20,pago:9}];
+  if(!S.cards.length) S.cards=[{id:'bbvaoro',nombre:'BBVA Oro',corte:20,pago:9,plan:7}];
+  S.cards.forEach(c=>{if(c.id==='bbvaoro'&&c.plan===undefined)c.plan=7;});
 }
 function guardarLocal(){
   try{localStorage.setItem(CLAVE,JSON.stringify({cards:S.cards,pagados:S.pagados,compras:S.compras}));return true;}
@@ -374,16 +388,19 @@ function renderRegistrar(cd){
   // regla del periodo
   const h=hoy(),idx=closeIdx(h,cd.corte),ini=startDate(idx,cd.corte),fin=closeDate(idx,cd.corte),pago=payDate(idx,cd.corte,cd.pago);
   const tot=total(cargos(S.compras,cd,idx)),largo=Math.max(1,dias(ini,fin)),pos=Math.min(100,Math.max(0,dias(ini,pd(h))/largo*100)),faltan=dias(pd(h),fin);
+  let topeHTML='';
+  if(cd.tope>0){const q=r2(cd.tope-tot),pc=Math.min(100,tot/cd.tope*100);
+    topeHTML='<div><div class="tope'+(q<0?' pasado':'')+'"><span>Tope por corte: '+mxn.format(cd.tope)+'</span><strong class="num">'+(q<0?'Te pasaste por '+mxn.format(-q):'Te quedan '+mxn.format(q))+'</strong></div><div class="regla chica" role="img" aria-label="Uso de tu tope"><i style="width:'+pc.toFixed(1)+'%'+(q<0?';background:var(--critico)':'')+'"></i></div></div>';}
   let html='<div class="ciclo-top"><div><div class="eti">'+esc(cd.nombre)+' · este periodo</div><div class="grande num">'+mxn.format(tot)+'</div></div></div>'+
     '<div><div class="regla" role="img" aria-label="Avance del periodo"><i style="width:'+pos.toFixed(1)+'%"></i><b style="left:'+pos.toFixed(1)+'%"></b></div>'+
     '<div class="regla-l"><span>'+fd(ini)+'</span><span>Corte '+fd(fin)+'</span></div></div>'+
-    '<p class="nota">'+(faltan===0?'Hoy es tu corte.':faltan===1?'Falta 1 día para tu corte.':'Faltan '+faltan+' días para tu corte.')+' Lo de este periodo se paga a más tardar el '+fd(pago)+'.</p>';
+    '<p class="nota">'+(faltan===0?'Hoy es tu corte.':faltan===1?'Falta 1 día para tu corte.':'Faltan '+faltan+' días para tu corte.')+(cd.plan?' Lo de este periodo lo pagas el '+fd(planDate(idx,cd.corte,cd.pago,cd.plan))+'; el límite es el '+fd(pago)+'.':' Lo de este periodo se paga a más tardar el '+fd(pago)+'.')+'</p>'+topeHTML;
   // estado anterior, pendiente de pago
   const pIdx=idx-1,pTot=total(cargos(S.compras,cd,pIdx));
   if(pTot>0&&!S.pagados[cd.id+':'+pIdx]){
     const pp=payDate(pIdx,cd.corte,cd.pago),dd=dias(pd(h),pp),cls=dd<0?'vencido':dd<=5?'urge':'';
     html+='<div class="pagar '+cls+'"><div><strong class="num">Por pagar: '+mxn.format(pTot)+'</strong><span class="cuando">'+
-      (dd<0?'Venció el '+fd(pp):dd===0?'Vence hoy':'Límite '+fd(pp)+' ('+(dd===1?'falta 1 día':'faltan '+dd+' días')+')')+' · corte del '+fd(closeDate(pIdx,cd.corte))+'</span></div>'+
+      (dd<0?'Venció el '+fd(pp):dd===0?'Vence hoy':(cd.plan&&planDate(pIdx,cd.corte,cd.pago,cd.plan)>=pd(h)&&planDate(pIdx,cd.corte,cd.pago,cd.plan)<pp?'Págalo el '+fd(planDate(pIdx,cd.corte,cd.pago,cd.plan))+' · límite ':'Límite ')+fd(pp)+' ('+(dd===1?'falta 1 día':'faltan '+dd+' días')+')')+' · corte del '+fd(closeDate(pIdx,cd.corte))+'</span></div>'+
       '<button type="button" class="btn2" data-act="pagado" data-key="'+esc(cd.id+':'+pIdx)+'">Ya lo pagué</button></div>';
   }
   $('#ciclo').innerHTML=html;
@@ -423,9 +440,26 @@ function renderCorte(cd){
     '<div><div class="eti">'+(idx===actual?'Periodo actual':cerrado?'Periodo cerrado':'Periodo futuro')+'</div><h2>Corte del '+fd(fin,{day:'numeric',month:'long',year:'numeric'})+'</h2></div>'+
     '<button type="button" data-act="mes" data-d="1" aria-label="Periodo siguiente">›</button></div>'+
     '<div class="grande num">'+mxn.format(tot)+'</div>'+
-    '<p class="nota">Compras del '+fd(ini)+' al '+fd(fin)+'. Fecha límite de pago: '+fd(pago,{day:'numeric',month:'long'})+'.</p>'+
+    '<p class="nota">Compras del '+fd(ini)+' al '+fd(fin)+'. '+(cd.plan?'Lo pagas el '+fd(planDate(idx,cd.corte,cd.pago,cd.plan),{day:'numeric',month:'long'})+'; la fecha límite es el ':'Fecha límite de pago: ')+fd(pago,{day:'numeric',month:'long'})+'.</p>'+
     '<div class="tres"><div><span>Una sola vez</span><strong class="num">'+mxn.format(por('unica'))+'</strong></div><div><span>Mensualidades MSI</span><strong class="num">'+mxn.format(por('msi'))+'</strong></div><div><span>Suscripciones</span><strong class="num">'+mxn.format(por('sub'))+'</strong></div></div>'+
     (cerrado&&tot>0?'<button type="button" class="btn2" data-act="pagado" data-key="'+esc(key)+'">'+(S.pagados[key]?'Pagado. Tocar para desmarcar':'Marcar como pagado')+'</button>':'')+'</div>';
+  const hoyD=pd(h),ev=[];
+  ev.push({f:closeDate(actual,cd.corte),t:'Corte de tu tarjeta',s:'Lo que compres después entra al siguiente corte'});
+  const pT=total(cargos(S.compras,cd,actual-1));
+  if(pT>0&&!S.pagados[cd.id+':'+(actual-1)]){
+    const lim=payDate(actual-1,cd.corte,cd.pago),pl=planDate(actual-1,cd.corte,cd.pago,cd.plan),de='Corte del '+fd(closeDate(actual-1,cd.corte));
+    if(pl<lim) ev.push({f:pl,t:'Pagar tu tarjeta',s:de,m:pT});
+    ev.push({f:lim,t:'Último día para pagar',s:de,m:pT});
+  }
+  ev.push({f:planDate(actual,cd.corte,cd.pago,cd.plan),t:'Pagar el corte actual',s:'Va en '+mxn.format(total(cargos(S.compras,cd,actual)))+' hasta hoy'});
+  S.compras.filter(c=>c.tipo==='sub'&&c.tarjeta===cd.id&&!c.fin).forEach(c=>{
+    const dia=pd(c.fecha).getDate(),y=hoyD.getFullYear(),m=hoyD.getMonth();let d=new Date(y,m,Math.min(dia,dim(y,m)));
+    if(d<hoyD)d=new Date(y,m+1,Math.min(dia,dim(y,m+1)));
+    if(d>=pd(c.fecha))ev.push({f:d,t:'Cobro de '+c.comercio,s:'Suscripción',m:c.monto});
+  });
+  const prox=ev.filter(e=>e.f>=hoyD).sort((a,b)=>a.f-b.f).slice(0,7),enDias=n=>n===0?'hoy':n===1?'mañana':'en '+n+' días';
+  h1+='<div class="tarj"><h2>Próximas fechas</h2><ul class="prox">'+prox.map(e=>'<li><span><strong>'+esc(e.t)+'</strong><span class="cu">'+esc(e.s)+'</span></span><span class="f-r"><strong class="num">'+fd(e.f)+'</strong><span class="cu">'+enDias(dias(hoyD,e.f))+(e.m?' · '+mxn.format(e.m):'')+'</span></span></li>').join('')+'</ul>'+
+    '<a class="btn2" href="./recordatorios.ics" target="_blank" rel="noopener">Poner recordatorios en mi calendario</a><p class="nota">Agrega avisos cada mes a tu calendario: el 7 para pagar, el 9 como último día y el 20 por tu corte. Solo esta vez necesita internet.</p></div>';
   const serie=[];for(let k=actual-5;k<=actual;k++)serie.push({k,t:total(cargos(S.compras,cd,k))});
   const tope=Math.max(1,...serie.map(x=>x.t)),corto=t=>t>=1000?'$'+(t/1000).toFixed(1)+'k':'$'+Math.round(t);
   h1+='<div class="tarj"><h2>Tus últimos 6 cortes</h2><div class="tend">'+serie.map(x=>'<button type="button" class="tb'+(x.k===idx?' sel':'')+'" data-act="ir" data-k="'+x.k+'" aria-label="Ver corte de '+fd(closeDate(x.k,cd.corte),{month:'long'})+'"><span class="tv num">'+corto(x.t)+'</span><span class="tc"><i style="height:'+(x.t/tope*100).toFixed(1)+'%"></i></span><span class="tl">'+fd(closeDate(x.k,cd.corte),{month:'short'}).replace('.','')+'</span></button>').join('')+'</div></div>';
@@ -446,6 +480,8 @@ function renderAjustes(){
     d.map((c,i)=>'<div class="fila-t"><div class="campo"><label for="t-n-'+i+'">Nombre</label><input type="text" id="t-n-'+i+'" value="'+esc(c.nombre)+'" placeholder="Ej. BBVA Azul" autocomplete="off"></div>'+
       '<div class="campo"><label for="t-c-'+i+'">Día de corte</label><input type="text" inputmode="numeric" id="t-c-'+i+'" value="'+esc(c.corte||'')+'" placeholder="1 a 31"></div>'+
       '<div class="campo"><label for="t-p-'+i+'">Día límite de pago</label><input type="text" inputmode="numeric" id="t-p-'+i+'" value="'+esc(c.pago||'')+'" placeholder="1 a 31"></div>'+
+      '<div class="campo"><label for="t-l-'+i+'">Día en que pagas (opcional)</label><input type="text" inputmode="numeric" id="t-l-'+i+'" value="'+esc(c.plan||'')+'" placeholder="Ej. 7"></div>'+
+      '<div class="campo"><label for="t-t-'+i+'">Tope de gasto por corte (opcional)</label><input type="text" inputmode="decimal" id="t-t-'+i+'" value="'+esc(c.tope||'')+'" placeholder="Ej. 8000"></div>'+
       (S.compras.some(x=>x.tarjeta===c.id)?'':'<button type="button" class="btn-txt peligro" data-act="quitar-t" data-i="'+i+'">Quitar esta tarjeta</button>')+'</div>').join('')+
     '<button type="button" class="btn2" data-act="agregar-t">Agregar otra tarjeta</button><button type="submit" class="btn">Guardar tarjetas</button></form>'+
     '<div class="tarj"><h2>Tus datos</h2><p class="nota">Tus compras se guardan solo en este iPhone. '+(ui.offline?'La app ya está lista para usarse sin internet.':'Ábrela una vez con internet para que quede lista sin conexión.')+'</p>'+
@@ -453,7 +489,7 @@ function renderAjustes(){
     '<button type="button" class="btn2" data-act="respaldo">Guardar respaldo ('+S.compras.length+' compras)</button>'+
     '<label class="btn2 archivo">Restaurar un respaldo<input type="file" id="resp-in" accept="application/json,.json"></label></div>';
 }
-function leerDraft(){ui.draft.forEach((c,i)=>{const n=$('#t-n-'+i);if(!n)return;c.nombre=n.value.trim();c.corte=parseInt($('#t-c-'+i).value,10)||'';c.pago=parseInt($('#t-p-'+i).value,10)||'';});}
+function leerDraft(){ui.draft.forEach((c,i)=>{const n=$('#t-n-'+i);if(!n)return;c.nombre=n.value.trim();c.corte=parseInt($('#t-c-'+i).value,10)||'';c.pago=parseInt($('#t-p-'+i).value,10)||'';const l=parseInt($('#t-l-'+i).value,10);c.plan=l>=1&&l<=31?l:'';const tp=parseFloat(String($('#t-t-'+i).value).replace(/[$,\s]/g,''));c.tope=tp>0?tp:'';});}
 const diaOk=n=>Number.isInteger(n)&&n>=1&&n<=31;
 
 /* ===== Formulario ===== */
