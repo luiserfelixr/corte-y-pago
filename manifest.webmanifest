@@ -1,0 +1,16 @@
+{
+  "name": "Corte y Pago",
+  "short_name": "Corte y Pago",
+  "description": "Registro de compras de tu tarjeta por fecha de corte y de pago. Funciona sin internet.",
+  "lang": "es-MX",
+  "start_url": "./",
+  "scope": "./",
+  "display": "standalone",
+  "orientation": "portrait",
+  "background_color": "#EDF2EC",
+  "theme_color": "#0B7A53",
+  "icons": [
+    {"src": "icon-192.png", "sizes": "192x192", "type": "image/png", "purpose": "any"},
+    {"src": "icon-512.png", "sizes": "512x512", "type": "image/png", "purpose": "any maskable"}
+  ]
+}
